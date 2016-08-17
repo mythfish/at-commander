@@ -3,6 +3,8 @@
 var serialport = require('serialport');
 var Promise = require('promise');
 
+var DEBUG = false;
+exports.DEBUG = DEBUG;
 exports.Modem = Modem;
 exports.Command = Command;
 exports.Notification = Notification;
@@ -81,7 +83,7 @@ function Command(buf, expectedResult, opts)
         if (typeof this.expectedResult === 'string') {
             this.resultProcessor = function(buf, result) {
                 var r;
-                if (result instanceof Array){
+                if (result instanceof Array) {
                     r = result[0] == this.expectedResult;
                 } else {
                     r = result == this.expectedResult;
@@ -94,7 +96,9 @@ function Command(buf, expectedResult, opts)
             };
         } else if (this.expectedResult instanceof RegExp) {
             this.resultProcessor = function(buf, matches) {
-                return matches;
+              DEBUG && buf && console.log('buf: ' + buf.toString());
+              DEBUG && console.log(matches);
+              return matches;
             }
         } else if (typeof this.expectedResult === 'number') {
             this.resultProcessor = function(buf, matches) {
@@ -257,9 +261,9 @@ Modem.prototype._close = function(cb, gracefully)
 
     if (this.serial instanceof serialport.SerialPort){
         if (gracefully && this.processCommands && (this.currentCommand instanceof Command || this.pendingCommands.length)){
-            this.addCommand("AT").done(() => {
+            this.addCommand("AT").done(function () {
                 this.serial.close(cb);
-        });
+        }.bind(this));
         } else {
             this.stopProcessing(true);
             this.serial.close(cb);
@@ -505,9 +509,13 @@ Modem.prototype._run = function(command)
     if (typeof command.buf === 'string'){
         // console.log("Serial.write",new Buffer(command.buf), command.buf);
         this.serial.write(command.buf + this.config.EOL);
+
+        this.events.sent(Buffer.from(command.buf + this.config.EOL));
     } else if (command.buf instanceof Buffer){
         // console.log("Serial.write", command.buf);
         this.serial.write(command.buf);
+
+        this.events.sent(command.buf);
     }
 
     this._setBufferTimeout();
@@ -574,7 +582,7 @@ Modem.prototype._onData = function(data)
         if (0 < consumeBufBytes) {
             consumedBuf = this.inbuf.slice(0, consumeBufBytes);
             this.inbuf = this.inbuf.slice(consumeBufBytes);
-            // console.log("consumed ",consumeBufBytes,"remaining",this.inbuf);
+            DEBUG && console.log("consumed ", consumeBufBytes, "remaining", this.inbuf.toString());
         }
         if (finishCommand){
             // get copy of relevant buffer contents
